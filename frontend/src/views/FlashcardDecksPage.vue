@@ -136,6 +136,6 @@ const confirmDeleteDeck = async () => {
 }
 
 const goToDeck = (deckId) => {
-  router.push(`/flashcards/view/${deckId}`)
+  router.push(`/flashcards/${deckId}`)
 }
 </script>

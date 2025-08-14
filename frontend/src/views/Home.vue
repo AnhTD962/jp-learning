@@ -8,7 +8,7 @@
           v-for="deck in decks"
           :key="deck.id"
           class="p-4 bg-white rounded shadow cursor-pointer"
-          @click="$router.push(`/flashcards/${deck.id}`)"
+          @click="$router.push(`/flashcards/view/${deck.id}`)"
         >
           <h3 class="font-bold">{{ deck.name }}</h3>
           <p class="text-sm text-gray-600">

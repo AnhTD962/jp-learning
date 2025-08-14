@@ -36,6 +36,7 @@ const routes = [
     { path: '/word/:id/edit', component: WordEdit, name: 'WordEdit', beforeEnter: authGuard, props: true },
     { path: '/word/create', component: CreateWord, beforeEnter: authGuard },
     { path: '/flashcards/view/:id', component: FlashcardView, beforeEnter: authGuard },
+    { path: '/users/:userId/decks', component: FlashcardDeckOfOwner, beforeEnter: authGuard },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
 ]
 
