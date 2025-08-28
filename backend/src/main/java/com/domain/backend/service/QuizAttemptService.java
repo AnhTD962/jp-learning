@@ -9,6 +9,7 @@ import com.domain.backend.repository.FlashcardDeckRepository;
 import com.domain.backend.repository.QuizAttemptRepository;
 import com.domain.backend.repository.QuizRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -19,6 +20,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class QuizAttemptService {
@@ -42,27 +44,38 @@ public class QuizAttemptService {
                     attempt.setDeckId(quiz.getDeckId());
                     attempt.setUserId(username);
 
-                    // snapshot questions
-                    List<QuizQuestion> snapshot = Optional.ofNullable(quiz.getQuestions())
-                            .orElse(Collections.emptyList())
-                            .stream()
-                            .map(q -> {
-                                QuizQuestion copy = new QuizQuestion();
-                                copy.setFlashcardId(q.getFlashcardId());
-                                copy.setOptions(q.getOptions() == null ? null : List.copyOf(q.getOptions()));
-                                copy.setCorrectAnswer(q.getCorrectAnswer());
-                                copy.setUserAnswer(null);
-                                copy.setCorrect(false);
-                                return copy;
-                            })
-                            .collect(Collectors.toList());
+                    // snapshot questions - FIX: Handle null/empty questions properly
+                    List<QuizQuestion> originalQuestions = quiz.getQuestions();
+                    List<QuizQuestion> snapshot = new ArrayList<>();
+
+                    if (originalQuestions != null && !originalQuestions.isEmpty()) {
+                        snapshot = originalQuestions.stream()
+                                .map(q -> {
+                                    QuizQuestion copy = new QuizQuestion();
+                                    copy.setFlashcardId(q.getFlashcardId());
+                                    // FIX: Create mutable lists
+                                    copy.setOptions(q.getOptions() == null ?
+                                            new ArrayList<>() :
+                                            new ArrayList<>(q.getOptions()));
+                                    copy.setCorrectAnswer(q.getCorrectAnswer());
+                                    copy.setUserAnswer(null);
+                                    copy.setCorrect(false);
+                                    return copy;
+                                })
+                                .collect(Collectors.toList());
+                    }
 
                     attempt.setQuestionsSnapshot(snapshot);
                     attempt.setAnswers(new HashMap<>());
                     attempt.setCompleted(false);
 
                     return quizAttemptRepository.save(attempt)
-                            .map(saved -> new QuizAttemptResponseDto(saved.getId(), saved.getQuizId(), saved.getDeckId(), saved.getQuestionsSnapshot()));
+                            .map(saved -> new QuizAttemptResponseDto(
+                                    saved.getId(),
+                                    saved.getQuizId(),
+                                    saved.getDeckId(),
+                                    saved.getQuestionsSnapshot()
+                            ));
                 });
     }
 
@@ -71,6 +84,8 @@ public class QuizAttemptService {
      * Grading uses snapshot if available, otherwise uses quiz template.
      */
     public Mono<QuizAttemptResultDto> submitAttempt(String attemptId, QuizSubmissionRequest submission, String username) {
+        log.debug("Submitting attempt {} for user {}", attemptId, username);
+
         return quizAttemptRepository.findById(attemptId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Attempt not found")))
                 .flatMap(attempt -> {
@@ -81,21 +96,52 @@ public class QuizAttemptService {
                         return Mono.error(new IllegalStateException("Attempt already submitted"));
                     }
 
+                    // FIX: Handle null submission answers
+                    Map<String, String> submissionAnswers = submission.getAnswers();
+                    if (submissionAnswers == null) {
+                        submissionAnswers = new HashMap<>();
+                    }
+                    final Map<String, String> finalAnswers = submissionAnswers;
+
                     // grade using snapshot if exists; if not, fallback to quiz template
                     Mono<List<QuizQuestion>> questionSourceMono = Mono.justOrEmpty(attempt.getQuestionsSnapshot())
+                            .filter(list -> list != null && !list.isEmpty())
                             .switchIfEmpty(
                                     quizRepository.findById(attempt.getQuizId())
-                                            .map(q -> Optional.ofNullable(q.getQuestions()).orElse(Collections.emptyList()))
+                                            .map(quiz -> {
+                                                List<QuizQuestion> questions = quiz.getQuestions();
+                                                return questions != null ? questions : Collections.emptyList();
+                                            })
                             );
 
                     return questionSourceMono.flatMap(questionSource -> {
+                        // FIX: Create final variable for lambda
+                        final List<QuizQuestion> finalQuestionSource = questionSource != null ?
+                                questionSource : Collections.emptyList();
+
                         AtomicInteger score = new AtomicInteger(0);
                         List<QuizQuestionResultDto> questionResults = new ArrayList<>();
 
-                        for (QuizQuestion q : Optional.ofNullable(questionSource).orElse(Collections.emptyList())) {
-                            String userAnswer = submission.getAnswers().getOrDefault(q.getFlashcardId(), "").trim();
-                            boolean correct = q.getCorrectAnswer() != null && q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
-                            if (correct) score.incrementAndGet();
+                        for (QuizQuestion q : finalQuestionSource) {
+                            if (q == null || q.getFlashcardId() == null) {
+                                continue; // Skip invalid questions
+                            }
+
+                            String userAnswer = finalAnswers.getOrDefault(q.getFlashcardId(), "");
+                            if (userAnswer != null) {
+                                userAnswer = userAnswer.trim();
+                            } else {
+                                userAnswer = "";
+                            }
+
+                            boolean correct = false;
+                            if (q.getCorrectAnswer() != null && !q.getCorrectAnswer().isEmpty()) {
+                                correct = q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
+                            }
+
+                            if (correct) {
+                                score.incrementAndGet();
+                            }
 
                             questionResults.add(new QuizQuestionResultDto(
                                     q.getFlashcardId(),
@@ -105,31 +151,54 @@ public class QuizAttemptService {
                             ));
                         }
 
-                        attempt.setAnswers(submission.getAnswers());
+                        // FIX: Use defensive copy for answers
+                        attempt.setAnswers(new HashMap<>(finalAnswers));
                         attempt.setScore(score.get());
                         attempt.setCompletedAt(Instant.now());
                         attempt.setCompleted(true);
 
                         return quizAttemptRepository.save(attempt)
-                                .flatMap(savedAttempt -> {
-                                    int xp = calculateXpForQuiz(savedAttempt.getScore(), questionSource == null ? 0 : questionSource.size());
-                                    return gamificationService.awardXp(username, xp)
-                                            .flatMap(u -> gamificationService.checkAchievements(u.getId()))
-                                            .map(achievements -> {
-                                                messagePublisher.publishQuizCompletion(new QuizCompletionMessage(username, savedAttempt.getScore(), savedAttempt.getQuizId()));
-                                                return new QuizAttemptResultDto(
-                                                        savedAttempt.getId(),
-                                                        savedAttempt.getQuizId(),
-                                                        savedAttempt.getDeckId(),
-                                                        savedAttempt.getUserId(),
-                                                        savedAttempt.getScore(),
-                                                        savedAttempt.getCompletedAt(),
-                                                        questionResults
-                                                );
-                                            });
+                                .map(savedAttempt -> {
+                                    // Create result DTO first
+                                    QuizAttemptResultDto resultDto = new QuizAttemptResultDto(
+                                            savedAttempt.getId(),
+                                            savedAttempt.getQuizId(),
+                                            savedAttempt.getDeckId(),
+                                            savedAttempt.getUserId(),
+                                            savedAttempt.getScore(),
+                                            savedAttempt.getCompletedAt(),
+                                            new ArrayList<>(questionResults) // Defensive copy
+                                    );
+
+                                    // Handle gamification and messaging asynchronously (fire-and-forget)
+                                    int totalQuestions = finalQuestionSource.size();
+                                    int xp = calculateXpForQuiz(savedAttempt.getScore(), totalQuestions);
+
+                                    // Fire-and-forget gamification
+                                    gamificationService.awardXp(username, xp)
+                                            .flatMap(u -> gamificationService.checkAchievements(username)) // FIX: Use username instead of u.getId()
+                                            .doOnSuccess(achievements -> {
+                                                try {
+                                                    messagePublisher.publishQuizCompletion(
+                                                            new QuizCompletionMessage(
+                                                                    username,
+                                                                    savedAttempt.getScore(),
+                                                                    savedAttempt.getQuizId()
+                                                            )
+                                                    );
+                                                } catch (Exception e) {
+                                                    log.warn("Failed to publish quiz completion message", e);
+                                                }
+                                            })
+                                            .doOnError(error -> log.error("Error in gamification service for user {}", username, error))
+                                            .onErrorComplete() // Swallow errors to not affect main flow
+                                            .subscribe(); // Fire-and-forget
+
+                                    return resultDto;
                                 });
                     });
-                });
+                })
+                .doOnError(error -> log.error("Error submitting attempt {}", attemptId, error));
     }
 
     /**
@@ -167,7 +236,8 @@ public class QuizAttemptService {
                     if (!Objects.equals(deck.getUserId(), requesterUsername)) {
                         return Flux.error(new AccessDeniedException("Not allowed to view attempts for this deck"));
                     }
-                    return quizAttemptRepository.findByDeckId(deckId).flatMap(this::buildResultDtoFromAttempt);
+                    return quizAttemptRepository.findByDeckId(deckId)
+                            .flatMap(this::buildResultDtoFromAttempt);
                 });
     }
 
@@ -175,7 +245,8 @@ public class QuizAttemptService {
      * List attempts for the current user.
      */
     public Flux<QuizAttemptResultDto> listAttemptsForUser(String userId) {
-        return quizAttemptRepository.findByUserId(userId).flatMap(this::buildResultDtoFromAttempt);
+        return quizAttemptRepository.findByUserId(userId)
+                .flatMap(this::buildResultDtoFromAttempt);
     }
 
     /**
@@ -186,12 +257,24 @@ public class QuizAttemptService {
         List<QuizQuestion> snapshot = attempt.getQuestionsSnapshot();
 
         if (snapshot != null && !snapshot.isEmpty()) {
-            Map<String, String> answers = Optional.ofNullable(attempt.getAnswers()).orElse(Collections.emptyMap());
+            Map<String, String> answers = attempt.getAnswers();
+            if (answers == null) {
+                answers = Collections.emptyMap();
+            }
+            final Map<String, String> finalAnswers = answers;
+
             List<QuizQuestionResultDto> qResults = snapshot.stream()
+                    .filter(q -> q != null && q.getFlashcardId() != null)
                     .map(q -> {
-                        String userAns = answers.getOrDefault(q.getFlashcardId(), "");
-                        boolean correct = q.getCorrectAnswer() != null && q.getCorrectAnswer().equalsIgnoreCase(userAns);
-                        return new QuizQuestionResultDto(q.getFlashcardId(), q.getCorrectAnswer(), userAns, correct);
+                        String userAns = finalAnswers.getOrDefault(q.getFlashcardId(), "");
+                        boolean correct = q.getCorrectAnswer() != null &&
+                                q.getCorrectAnswer().equalsIgnoreCase(userAns);
+                        return new QuizQuestionResultDto(
+                                q.getFlashcardId(),
+                                q.getCorrectAnswer(),
+                                userAns,
+                                correct
+                        );
                     })
                     .collect(Collectors.toList());
 
@@ -210,17 +293,32 @@ public class QuizAttemptService {
         return quizRepository.findById(attempt.getQuizId())
                 .defaultIfEmpty(new Quiz())
                 .map(quiz -> {
-                    Map<String, String> answers = Optional.ofNullable(attempt.getAnswers()).orElse(Collections.emptyMap());
-                    Map<String, String> correctMap = Optional.ofNullable(quiz.getQuestions())
-                            .orElse(Collections.emptyList())
-                            .stream()
-                            .collect(Collectors.toMap(QuizQuestion::getFlashcardId, QuizQuestion::getCorrectAnswer, (a,b)->a));
+                    Map<String, String> answers = attempt.getAnswers();
+                    if (answers == null) {
+                        answers = Collections.emptyMap();
+                    }
 
-                    List<QuizQuestionResultDto> qResults = answers.entrySet().stream()
+                    List<QuizQuestion> quizQuestions = quiz.getQuestions();
+                    Map<String, String> correctMap = new HashMap<>();
+
+                    if (quizQuestions != null) {
+                        correctMap = quizQuestions.stream()
+                                .filter(q -> q != null && q.getFlashcardId() != null)
+                                .collect(Collectors.toMap(
+                                        QuizQuestion::getFlashcardId,
+                                        q -> q.getCorrectAnswer() != null ? q.getCorrectAnswer() : "",
+                                        (a, b) -> a
+                                ));
+                    }
+
+                    final Map<String, String> finalCorrectMap = correctMap;
+                    final Map<String, String> finalAnswers = answers;
+
+                    List<QuizQuestionResultDto> qResults = finalAnswers.entrySet().stream()
                             .map(e -> {
                                 String fid = e.getKey();
-                                String userAns = e.getValue();
-                                String correct = correctMap.get(fid);
+                                String userAns = e.getValue() != null ? e.getValue() : "";
+                                String correct = finalCorrectMap.get(fid);
                                 boolean correctFlag = correct != null && correct.equalsIgnoreCase(userAns);
                                 return new QuizQuestionResultDto(fid, correct, userAns, correctFlag);
                             })
@@ -239,6 +337,9 @@ public class QuizAttemptService {
     }
 
     private int calculateXpForQuiz(int score, int totalQuestions) {
-        return totalQuestions == 0 ? 0 : score * 10;
+        if (totalQuestions <= 0) {
+            return 0;
+        }
+        return score * 10;
     }
 }

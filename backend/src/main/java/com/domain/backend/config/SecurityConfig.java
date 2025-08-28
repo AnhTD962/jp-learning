@@ -40,6 +40,7 @@ public class SecurityConfig {
                         .pathMatchers("/words/**").permitAll() // Allow public access to word lookup (adjust as needed)
                         .pathMatchers("/notifications/stream").permitAll() // Allow SSE connection for notifications
                         .pathMatchers("/quizzes/**").permitAll()
+                        .pathMatchers("/attempts/**").permitAll()
                         .pathMatchers("/decks/**").permitAll() // Allow public access to flashcard decks
                         .pathMatchers("/admin/**").hasRole("ADMIN") // Example: Admin-only routes
                         .anyExchange().authenticated() // All other requests require authentication

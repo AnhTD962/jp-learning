@@ -17,12 +17,12 @@ export default {
   },
 
   async submitAttempt(attemptId, answers) {
-    const payload = { answers };
+    // Đừng wrap thêm "answers" nữa
     const res = await apiClient.post(
       `/attempts/${encodeURIComponent(attemptId)}/submit`,
-      payload
+      { answers } // đúng chuẩn DTO
     );
-    return res.data; // QuizAttemptResultDto
+    return res.data;
   },
 
   // Get attempt result (owner or deck owner)

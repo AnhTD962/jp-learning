@@ -50,6 +50,31 @@
             </div>
         </div>
 
+        <!-- Take Quiz Section -->
+        <div class="mt-8 text-center">
+            <button @click="showQuizForm = true"
+                class="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 transition">
+                🎯 Take Quiz
+            </button>
+        </div>
+
+        <!-- Quiz Setup Modal -->
+        <div v-if="showQuizForm" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div class="bg-white p-6 rounded-lg shadow-lg w-96 space-y-4">
+                <h2 class="text-xl font-bold">Create a Quiz</h2>
+                <label class="block text-sm text-gray-600 mb-1">Number of Questions</label>
+                <input v-model="numQuestions" type="number" min="1" :max="currentDeck.flashcards.length"
+                    class="w-full px-3 py-2 border rounded-lg focus:ring focus:ring-orange-200" />
+
+                <div class="flex justify-end space-x-3">
+                    <button @click="showQuizForm = false"
+                        class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
+                    <button @click="createQuiz"
+                        class="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600">Create Quiz</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Owner -->
         <div v-if="currentDeck?.userId"
             class="mt-6 text-gray-600 text-sm flex items-center justify-center cursor-pointer hover:text-blue-600 transition"
@@ -79,6 +104,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useFlashcardStore } from '../store/flashcardStore.js'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../store/authStore.js'
+import quizService from '../services/quizService.js'
 
 const store = useFlashcardStore()
 const { currentDeck } = storeToRefs(store)
@@ -90,6 +116,9 @@ const { user } = storeToRefs(auth)
 
 const cardIndex = ref(0)
 const isFlipped = ref(false)
+
+const showQuizForm = ref(false)
+const numQuestions = ref(5)
 
 onMounted(() => {
     store.fetchDeck(route.params.id)
@@ -118,7 +147,12 @@ const prevCard = () => {
 }
 
 const goToOwner = (userId) => {
-  router.push(`/users/${userId}/decks`)
+    router.push(`/users/${userId}/decks`)
+}
+
+const createQuiz = async () => {
+  const quiz = await quizService.generateQuiz(currentDeck.value.id, numQuestions.value)
+  router.push({ name: 'QuizView', params: { quizId: quiz.id } })
 }
 </script>
 

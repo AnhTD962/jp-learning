@@ -7,8 +7,8 @@ import RegisterPage from '../views/RegisterPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import FlashcardDecksPage from '../views/FlashcardDecksPage.vue'
 import FlashcardDetailPage from '../views/FlashcardDetailPage.vue'
-import QuizPage from '../views/QuizPage.vue'
-import QuizResultPage from '../views/QuizResultPage.vue'
+import QuizView from '../views/QuizView.vue'
+import QuizResult from '../views/QuizResult.vue'
 import LeaderboardPage from '../views/LeaderboardPage.vue'
 import AchievementsPage from '../views/AchievementsPage.vue'
 import NotFoundPage from '../views/NotFoundPage.vue'
@@ -19,6 +19,7 @@ import WordEdit from '../components/WordEdit.vue'
 import CreateWord from '../components/CreateWord.vue'
 import FlashcardDeckOfOwner from '../views/FlashcardDeckOfOwner.vue'
 import FlashcardView from '../views/FlashcardView.vue'
+import MyAttempts from '../views/MyAttempts.vue'
 
 const routes = [
     { path: '/dashboard', component: DashboardPage, beforeEnter: authGuard },
@@ -26,8 +27,9 @@ const routes = [
     { path: '/register', component: RegisterPage },
     { path: '/flashcards', component: FlashcardDecksPage, beforeEnter: authGuard },
     { path: '/flashcards/:id', component: FlashcardDetailPage, beforeEnter: authGuard },
-    { path: '/quiz', component: QuizPage, beforeEnter: authGuard },
-    { path: '/quiz-result', component: QuizResultPage, beforeEnter: authGuard },
+    { path: '/quiz/:quizId', component: QuizView, name: 'QuizView', beforeEnter: authGuard, props: true },
+    { path: '/attempts/:attemptId/result', component: QuizResult, beforeEnter: authGuard },
+    { path: '/attempts/me', component: MyAttempts, beforeEnter: authGuard },
     { path: '/leaderboard', component: LeaderboardPage, beforeEnter: authGuard },
     { path: '/achievements', component: AchievementsPage, beforeEnter: authGuard },
     { path: '/', component: Home },
