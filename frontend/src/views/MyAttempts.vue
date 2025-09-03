@@ -6,7 +6,7 @@
       <li v-for="a in attempts" :key="a.attemptId"
         class="p-4 border rounded shadow hover:bg-gray-50 cursor-pointer"
         @click="goToResult(a.attemptId)">
-        <p class="font-semibold">Quiz: {{ a.quizId }}</p>
+        <p class="font-semibold">Quiz: {{ a.deckName }}</p>
         <p>Score: {{ a.score ?? 'In progress' }}</p>
       </li>
     </ul>

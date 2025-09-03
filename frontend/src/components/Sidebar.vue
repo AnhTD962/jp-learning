@@ -7,9 +7,9 @@
         <span class="ml-2">Home</span>
       </router-link>
 
-      <router-link to="/dashboard" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
+      <router-link to="/attempts" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
         <FolderOpenIcon class="w-5 h-5 mr-1" />
-        <span class="ml-2">Dashboard</span>
+        <span class="ml-2">Attempts</span>
       </router-link>
 
       <router-link to="/notification" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
@@ -28,11 +28,6 @@
       <router-link to="/flashcards" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
         <Squares2X2Icon class="w-5 h-5 mr-1" />
         <span class="ml-2">Flashcards</span>
-      </router-link>
-
-      <router-link to="/quiz" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
-        <QuestionMarkCircleIcon class="w-5 h-5 mr-1" />
-        <span class="ml-2">Quiz</span>
       </router-link>
 
       <router-link to="/leaderboard" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">

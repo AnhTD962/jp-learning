@@ -28,6 +28,7 @@
             <p class="text-gray-500 text-sm">{{ deck.flashcards?.length || 0 }} cards</p>
           </div>
           <div class="flex gap-2">
+            <button @click.stop="openAttemptsModal(deck)" class="text-purple-500 hover:underline">📊</button>
             <button @click.stop="openEditModal(deck)" class="text-blue-500 hover:underline">✏️</button>
             <button @click.stop="openDeleteModal(deck)" class="text-red-500 hover:underline">🗑️</button>
           </div>
@@ -58,6 +59,37 @@
         </div>
       </div>
     </div>
+
+    <!-- Deck Attempts Modal -->
+    <div v-if="showAttemptsModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center px-4">
+      <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl mx-auto">
+        <h2 class="text-xl font-bold mb-4">Attempts for {{ selectedDeck?.name }}</h2>
+
+        <div v-if="loadingAttempts" class="text-gray-500">Loading...</div>
+
+        <div v-else-if="deckAttempts.length === 0" class="text-gray-500 italic">
+          No attempts found for this deck.
+        </div>
+
+        <ul v-else class="space-y-2 max-h-80 overflow-y-auto">
+          <li v-for="att in deckAttempts" :key="att.attemptId"
+            class="border rounded p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+            @click="viewAttemptDetail(att.attemptId)">
+            <div>
+              <p class="font-semibold">User: {{ att.userId }}</p>
+              <p class="text-sm text-gray-500">Score: {{ att.score }}</p>
+            </div>
+            <p class="text-sm text-gray-400">
+              {{ new Date(att.completedAt * 1000).toLocaleString() }}
+            </p>
+          </li>
+        </ul>
+
+        <div class="flex justify-end mt-4">
+          <button @click="closeAttemptsModal" class="px-4 py-2 border rounded-lg">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -65,11 +97,16 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFlashcardStore } from '../store/flashcardStore'
+import quizService from '../services/quizService.js'
 import { storeToRefs } from 'pinia'
 
 const store = useFlashcardStore()
 const { decks } = storeToRefs(store)
 const router = useRouter()
+
+const showAttemptsModal = ref(false)
+const deckAttempts = ref([])
+const loadingAttempts = ref(false)
 
 const newDeckName = ref('')
 const editingDeck = ref(null)
@@ -133,6 +170,25 @@ const confirmDeleteDeck = async () => {
     console.log('success')
     window.location.reload()
   }
+}
+
+const openAttemptsModal = async (deck) => {
+  selectedDeck.value = deck
+  showAttemptsModal.value = true
+  loadingAttempts.value = true
+  try {
+    deckAttempts.value = await quizService.getDeckAttempts(deck.id)
+  } catch (e) {
+    console.error('Error fetching attempts:', e)
+    deckAttempts.value = []
+  } finally {
+    loadingAttempts.value = false
+  }
+}
+
+const closeAttemptsModal = () => {
+  showAttemptsModal.value = false
+  deckAttempts.value = []
 }
 
 const goToDeck = (deckId) => {
