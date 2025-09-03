@@ -14,5 +14,6 @@ public class QuizAttemptResponseDto {
     private String attemptId;
     private String quizId;
     private String deckId;
+    private String deckName;
     private List<QuizQuestion> questionsSnapshot; // frontend dùng để hiển thị
 }

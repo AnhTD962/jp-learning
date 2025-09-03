@@ -17,6 +17,7 @@ public class Quiz {
     @Id
     private String id;
     private String deckId;
+    private String deckName; // thêm để hiển thị tên deck
     private String userId;
     private List<QuizQuestion> questions; // Embedded documents
     private int score;

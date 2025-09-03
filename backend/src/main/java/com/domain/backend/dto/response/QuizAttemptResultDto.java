@@ -14,6 +14,7 @@ public class QuizAttemptResultDto {
     private String attemptId;
     private String quizId;
     private String deckId;
+    private String deckName;
     private String userId;
     private int score;
     private Instant completedAt;

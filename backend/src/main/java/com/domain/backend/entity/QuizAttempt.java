@@ -19,6 +19,7 @@ public class QuizAttempt {
     private String id;
     private String quizId;   // tham chiếu tới Quiz template
     private String deckId;   // để query theo deck
+    private String deckName;
     private String userId;   // ai làm attempt này
 
     // snapshot questions at startAttempt time (so grading is stable)

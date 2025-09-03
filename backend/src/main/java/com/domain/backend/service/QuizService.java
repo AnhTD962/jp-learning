@@ -44,41 +44,53 @@ public class QuizService {
                     List<Flashcard> picked = pool.subList(0, n);
 
                     List<QuizQuestion> questions = picked.stream().map(card -> {
-                        String correct = card.getBack();
+                        boolean useFrontAsQuestion = new Random().nextBoolean();
+                        String questionText = useFrontAsQuestion ? card.getFront() : card.getBack();
+                        String correct = useFrontAsQuestion ? card.getBack() : card.getFront();
 
                         List<String> distractors = all.stream()
-                                .filter(c -> !Objects.equals(c.getId(), card.getId()))
-                                .map(Flashcard::getBack)
-                                .filter(Objects::nonNull)
+                                .filter(c -> !Objects.equals(c.getId(), card.getId())).map(c -> useFrontAsQuestion ? c.getBack() : c.getFront()).filter(ans -> ans != null && !ans.equalsIgnoreCase(correct)) // loại bỏ trùng với correct
                                 .distinct()
                                 .collect(Collectors.toCollection(ArrayList::new));
+
                         Collections.shuffle(distractors);
 
+// luôn có 1 correct + tối đa 3 distractors
                         List<String> options = new ArrayList<>();
                         options.add(correct);
                         options.addAll(distractors.stream().limit(3).toList());
 
-                        options = options.stream().distinct().collect(Collectors.toCollection(ArrayList::new));
+// trộn ngẫu nhiên
                         Collections.shuffle(options);
-                        while (options.size() < 4) options.add("—");
+
+// nếu ít distractors thì vẫn đảm bảo 4 đáp án
+                        while (options.size() < 4) {
+                            options.add("—");
+                        }
 
                         QuizQuestion q = new QuizQuestion();
+                        q.setQuestionId(UUID.randomUUID().toString());
                         q.setFlashcardId(card.getId());
+                        q.setQuestionText(questionText);
                         q.setOptions(options);
                         q.setCorrectAnswer(correct);
                         q.setUserAnswer(null);
                         q.setCorrect(false);
+
                         return q;
                     }).collect(Collectors.toList());
 
                     Quiz quiz = new Quiz();
                     quiz.setDeckId(deckId);
+                    quiz.setDeckName(deck.getName()); // thêm
+                    quiz.setUserId(creatorUserId);
                     quiz.setQuestions(questions);
-                    // optional: set creatorId/createdAt in Quiz if your entity has fields
-                    // quiz.setCreatorId(creatorUserId);
+                    quiz.setCompleted(false);
+
                     return quizRepository.save(quiz);
                 });
     }
+
 
     /**
      * Return quiz template by id.

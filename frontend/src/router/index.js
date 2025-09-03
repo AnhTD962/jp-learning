@@ -4,7 +4,6 @@ import { authGuard } from '../utils/authGuard'
 // Import views
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
-import DashboardPage from '../views/DashboardPage.vue'
 import FlashcardDecksPage from '../views/FlashcardDecksPage.vue'
 import FlashcardDetailPage from '../views/FlashcardDetailPage.vue'
 import QuizView from '../views/QuizView.vue'
@@ -22,14 +21,13 @@ import FlashcardView from '../views/FlashcardView.vue'
 import MyAttempts from '../views/MyAttempts.vue'
 
 const routes = [
-    { path: '/dashboard', component: DashboardPage, beforeEnter: authGuard },
     { path: '/login', component: LoginPage },
     { path: '/register', component: RegisterPage },
     { path: '/flashcards', component: FlashcardDecksPage, beforeEnter: authGuard },
     { path: '/flashcards/:id', component: FlashcardDetailPage, beforeEnter: authGuard },
     { path: '/quiz/:quizId', component: QuizView, name: 'QuizView', beforeEnter: authGuard, props: true },
     { path: '/attempts/:attemptId/result', component: QuizResult, beforeEnter: authGuard },
-    { path: '/attempts/me', component: MyAttempts, beforeEnter: authGuard },
+    { path: '/attempts', component: MyAttempts, beforeEnter: authGuard },
     { path: '/leaderboard', component: LeaderboardPage, beforeEnter: authGuard },
     { path: '/achievements', component: AchievementsPage, beforeEnter: authGuard },
     { path: '/', component: Home },

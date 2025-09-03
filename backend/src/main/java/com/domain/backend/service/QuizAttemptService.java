@@ -4,7 +4,6 @@ import com.domain.backend.dto.request.QuizSubmissionRequest;
 import com.domain.backend.dto.response.*;
 import com.domain.backend.entity.*;
 import com.domain.backend.messaging.MessagePublisher;
-import com.domain.backend.messaging.QuizCompletionMessage;
 import com.domain.backend.repository.FlashcardDeckRepository;
 import com.domain.backend.repository.QuizAttemptRepository;
 import com.domain.backend.repository.QuizRepository;
@@ -33,58 +32,74 @@ public class QuizAttemptService {
 
     /**
      * Start an attempt for a quiz (snapshot questions at start).
-     * Returns attempt metadata + questionsSnapshot for frontend to render.
      */
     public Mono<QuizAttemptResponseDto> startAttempt(String quizId, String username) {
-        return quizRepository.findById(quizId)
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Quiz not found")))
-                .flatMap(quiz -> {
-                    QuizAttempt attempt = new QuizAttempt();
-                    attempt.setQuizId(quiz.getId());
-                    attempt.setDeckId(quiz.getDeckId());
-                    attempt.setUserId(username);
+        log.info("➡️ [START_ATTEMPT] quizId={}, username={}", quizId, username);
 
-                    // snapshot questions - FIX: Handle null/empty questions properly
-                    List<QuizQuestion> originalQuestions = quiz.getQuestions();
-                    List<QuizQuestion> snapshot = new ArrayList<>();
+        return quizAttemptRepository.findByQuizIdAndUserIdAndCompletedFalse(quizId, username)
+                .flatMap(existing -> {
+                    log.info("♻️ [ATTEMPT_REUSED] attemptId={}, quizId={}, deckId={}, username={}",
+                            existing.getId(), existing.getQuizId(), existing.getDeckId(), existing.getUserId());
+                    return Mono.just(new QuizAttemptResponseDto(
+                            existing.getId(),
+                            existing.getQuizId(),
+                            existing.getDeckId(),
+                            existing.getDeckName(),
+                            existing.getQuestionsSnapshot()
+                    ));
+                })
+                .switchIfEmpty(
+                        quizRepository.findById(quizId)
+                                .switchIfEmpty(Mono.error(new IllegalArgumentException("Quiz not found")))
+                                .flatMap(quiz -> {
+                                    QuizAttempt attempt = new QuizAttempt();
+                                    attempt.setQuizId(quiz.getId());
+                                    attempt.setDeckId(quiz.getDeckId());
+                                    attempt.setDeckName(quiz.getDeckName());
+                                    attempt.setUserId(username);
 
-                    if (originalQuestions != null && !originalQuestions.isEmpty()) {
-                        snapshot = originalQuestions.stream()
-                                .map(q -> {
-                                    QuizQuestion copy = new QuizQuestion();
-                                    copy.setFlashcardId(q.getFlashcardId());
-                                    // FIX: Create mutable lists
-                                    copy.setOptions(q.getOptions() == null ?
-                                            new ArrayList<>() :
-                                            new ArrayList<>(q.getOptions()));
-                                    copy.setCorrectAnswer(q.getCorrectAnswer());
-                                    copy.setUserAnswer(null);
-                                    copy.setCorrect(false);
-                                    return copy;
+                                    // snapshot questions
+                                    List<QuizQuestion> snapshot = Optional.ofNullable(quiz.getQuestions())
+                                            .orElse(Collections.emptyList())
+                                            .stream()
+                                            .map(q -> {
+                                                QuizQuestion copy = new QuizQuestion();
+                                                copy.setQuestionId(q.getQuestionId());
+                                                copy.setFlashcardId(q.getFlashcardId());
+                                                copy.setQuestionText(q.getQuestionText());
+                                                copy.setOptions(q.getOptions() == null ? new ArrayList<>() : new ArrayList<>(q.getOptions()));
+                                                copy.setCorrectAnswer(q.getCorrectAnswer());
+                                                copy.setUserAnswer(null);
+                                                copy.setCorrect(false);
+                                                return copy;
+                                            })
+                                            .collect(Collectors.toList());
+
+                                    attempt.setQuestionsSnapshot(snapshot);
+                                    attempt.setAnswers(new HashMap<>());
+                                    attempt.setCompleted(false);
+
+                                    return quizAttemptRepository.save(attempt)
+                                            .doOnSuccess(saved ->
+                                                    log.info("✅ [ATTEMPT_CREATED] attemptId={}, quizId={}, deckId={}, username={}",
+                                                            saved.getId(), saved.getQuizId(), saved.getDeckId(), saved.getUserId())
+                                            )
+                                            .map(saved -> new QuizAttemptResponseDto(
+                                                    saved.getId(),
+                                                    saved.getQuizId(),
+                                                    saved.getDeckId(),
+                                                    saved.getDeckName(),
+                                                    saved.getQuestionsSnapshot()
+                                            ));
                                 })
-                                .collect(Collectors.toList());
-                    }
-
-                    attempt.setQuestionsSnapshot(snapshot);
-                    attempt.setAnswers(new HashMap<>());
-                    attempt.setCompleted(false);
-
-                    return quizAttemptRepository.save(attempt)
-                            .map(saved -> new QuizAttemptResponseDto(
-                                    saved.getId(),
-                                    saved.getQuizId(),
-                                    saved.getDeckId(),
-                                    saved.getQuestionsSnapshot()
-                            ));
-                });
+                );
     }
 
     /**
-     * Submit an attempt (only attempt owner can submit).
-     * Grading uses snapshot if available, otherwise uses quiz template.
+     * Submit an attempt.
      */
     public Mono<QuizAttemptResultDto> submitAttempt(String attemptId, QuizSubmissionRequest submission, String username) {
-        log.debug("Submitting attempt {} for user {}", attemptId, username);
+        log.info("➡️ [SUBMIT_ATTEMPT] attemptId={}, username={}", attemptId, username);
 
         return quizAttemptRepository.findById(attemptId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Attempt not found")))
@@ -96,116 +111,63 @@ public class QuizAttemptService {
                         return Mono.error(new IllegalStateException("Attempt already submitted"));
                     }
 
-                    // FIX: Handle null submission answers
                     Map<String, String> submissionAnswers = submission.getAnswers();
                     if (submissionAnswers == null) {
                         submissionAnswers = new HashMap<>();
                     }
                     final Map<String, String> finalAnswers = submissionAnswers;
 
-                    // grade using snapshot if exists; if not, fallback to quiz template
-                    Mono<List<QuizQuestion>> questionSourceMono = Mono.justOrEmpty(attempt.getQuestionsSnapshot())
-                            .filter(list -> list != null && !list.isEmpty())
-                            .switchIfEmpty(
-                                    quizRepository.findById(attempt.getQuizId())
-                                            .map(quiz -> {
-                                                List<QuizQuestion> questions = quiz.getQuestions();
-                                                return questions != null ? questions : Collections.emptyList();
-                                            })
-                            );
+                    List<QuizQuestion> snapshot = attempt.getQuestionsSnapshot();
+                    if (snapshot == null || snapshot.isEmpty()) {
+                        return Mono.error(new IllegalStateException("Attempt has no snapshot questions"));
+                    }
 
-                    return questionSourceMono.flatMap(questionSource -> {
-                        // FIX: Create final variable for lambda
-                        final List<QuizQuestion> finalQuestionSource = questionSource != null ?
-                                questionSource : Collections.emptyList();
+                    AtomicInteger score = new AtomicInteger(0);
+                    List<QuizQuestionResultDto> questionResults = new ArrayList<>();
 
-                        AtomicInteger score = new AtomicInteger(0);
-                        List<QuizQuestionResultDto> questionResults = new ArrayList<>();
+                    for (QuizQuestion q : snapshot) {
+                        if (q == null || q.getQuestionId() == null) continue;
 
-                        for (QuizQuestion q : finalQuestionSource) {
-                            if (q == null || q.getFlashcardId() == null) {
-                                continue; // Skip invalid questions
-                            }
+                        // ✅ Lấy theo questionId thay vì flashcardId
+                        String userAnswer = finalAnswers.getOrDefault(q.getQuestionId(), "");
+                        if (userAnswer != null) userAnswer = userAnswer.trim();
 
-                            String userAnswer = finalAnswers.getOrDefault(q.getFlashcardId(), "");
-                            if (userAnswer != null) {
-                                userAnswer = userAnswer.trim();
-                            } else {
-                                userAnswer = "";
-                            }
+                        boolean correct = q.getCorrectAnswer() != null &&
+                                q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
 
-                            boolean correct = false;
-                            if (q.getCorrectAnswer() != null && !q.getCorrectAnswer().isEmpty()) {
-                                correct = q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
-                            }
+                        if (correct) score.incrementAndGet();
 
-                            if (correct) {
-                                score.incrementAndGet();
-                            }
+                        questionResults.add(new QuizQuestionResultDto(
+                                q.getQuestionId(),
+                                q.getFlashcardId(),
+                                q.getQuestionText(),
+                                q.getCorrectAnswer(),
+                                userAnswer,
+                                correct
+                        ));
+                    }
 
-                            questionResults.add(new QuizQuestionResultDto(
-                                    q.getFlashcardId(),
-                                    q.getCorrectAnswer(),
-                                    userAnswer,
-                                    correct
+                    attempt.setAnswers(new HashMap<>(finalAnswers));
+                    attempt.setScore(score.get());
+                    attempt.setCompletedAt(Instant.now());
+                    attempt.setCompleted(true);
+
+                    return quizAttemptRepository.save(attempt)
+                            .map(savedAttempt -> new QuizAttemptResultDto(
+                                    savedAttempt.getId(),
+                                    savedAttempt.getQuizId(),
+                                    savedAttempt.getDeckId(),
+                                    savedAttempt.getDeckName(),
+                                    savedAttempt.getUserId(),
+                                    savedAttempt.getScore(),
+                                    savedAttempt.getCompletedAt(),
+                                    new ArrayList<>(questionResults)
                             ));
-                        }
-
-                        // FIX: Use defensive copy for answers
-                        attempt.setAnswers(new HashMap<>(finalAnswers));
-                        attempt.setScore(score.get());
-                        attempt.setCompletedAt(Instant.now());
-                        attempt.setCompleted(true);
-
-                        return quizAttemptRepository.save(attempt)
-                                .map(savedAttempt -> {
-                                    // Create result DTO first
-                                    QuizAttemptResultDto resultDto = new QuizAttemptResultDto(
-                                            savedAttempt.getId(),
-                                            savedAttempt.getQuizId(),
-                                            savedAttempt.getDeckId(),
-                                            savedAttempt.getUserId(),
-                                            savedAttempt.getScore(),
-                                            savedAttempt.getCompletedAt(),
-                                            new ArrayList<>(questionResults) // Defensive copy
-                                    );
-
-                                    // Handle gamification and messaging asynchronously (fire-and-forget)
-                                    int totalQuestions = finalQuestionSource.size();
-                                    int xp = calculateXpForQuiz(savedAttempt.getScore(), totalQuestions);
-
-                                    // Fire-and-forget gamification
-                                    gamificationService.awardXp(username, xp)
-                                            .flatMap(u -> gamificationService.checkAchievements(username)) // FIX: Use username instead of u.getId()
-                                            .doOnSuccess(achievements -> {
-                                                try {
-                                                    messagePublisher.publishQuizCompletion(
-                                                            new QuizCompletionMessage(
-                                                                    username,
-                                                                    savedAttempt.getScore(),
-                                                                    savedAttempt.getQuizId()
-                                                            )
-                                                    );
-                                                } catch (Exception e) {
-                                                    log.warn("Failed to publish quiz completion message", e);
-                                                }
-                                            })
-                                            .doOnError(error -> log.error("Error in gamification service for user {}", username, error))
-                                            .onErrorComplete() // Swallow errors to not affect main flow
-                                            .subscribe(); // Fire-and-forget
-
-                                    return resultDto;
-                                });
-                    });
-                })
-                .doOnError(error -> log.error("Error submitting attempt {}", attemptId, error));
+                });
     }
 
     /**
      * Get attempt result.
-     * - Allowed if requester == attempt.userId
-     * - Or allowed if requester is deck owner
-     * - Otherwise denied
      */
     public Mono<QuizAttemptResultDto> getAttemptResult(String attemptId, String requesterUsername) {
         return quizAttemptRepository.findById(attemptId)
@@ -227,7 +189,7 @@ public class QuizAttemptService {
     }
 
     /**
-     * Deck owner: list attempts for a deck.
+     * List attempts for a deck (only deck owner).
      */
     public Flux<QuizAttemptResultDto> listAttemptsForDeck(String deckId, String requesterUsername) {
         return flashcardDeckRepository.findById(deckId)
@@ -250,90 +212,47 @@ public class QuizAttemptService {
     }
 
     /**
-     * Build result DTO from attempt. Prefer snapshot; otherwise fallback to quiz template.
+     * Build result DTO from attempt (always use snapshot).
      */
     private Mono<QuizAttemptResultDto> buildResultDtoFromAttempt(QuizAttempt attempt) {
-        // prefer snapshot for correct answers
         List<QuizQuestion> snapshot = attempt.getQuestionsSnapshot();
-
-        if (snapshot != null && !snapshot.isEmpty()) {
-            Map<String, String> answers = attempt.getAnswers();
-            if (answers == null) {
-                answers = Collections.emptyMap();
-            }
-            final Map<String, String> finalAnswers = answers;
-
-            List<QuizQuestionResultDto> qResults = snapshot.stream()
-                    .filter(q -> q != null && q.getFlashcardId() != null)
-                    .map(q -> {
-                        String userAns = finalAnswers.getOrDefault(q.getFlashcardId(), "");
-                        boolean correct = q.getCorrectAnswer() != null &&
-                                q.getCorrectAnswer().equalsIgnoreCase(userAns);
-                        return new QuizQuestionResultDto(
-                                q.getFlashcardId(),
-                                q.getCorrectAnswer(),
-                                userAns,
-                                correct
-                        );
-                    })
-                    .collect(Collectors.toList());
-
-            return Mono.just(new QuizAttemptResultDto(
-                    attempt.getId(),
-                    attempt.getQuizId(),
-                    attempt.getDeckId(),
-                    attempt.getUserId(),
-                    attempt.getScore(),
-                    attempt.getCompletedAt(),
-                    qResults
-            ));
+        if (snapshot == null || snapshot.isEmpty()) {
+            return Mono.error(new IllegalStateException("Attempt has no snapshot questions"));
         }
 
-        // fallback: load quiz template
-        return quizRepository.findById(attempt.getQuizId())
-                .defaultIfEmpty(new Quiz())
-                .map(quiz -> {
-                    Map<String, String> answers = attempt.getAnswers();
-                    if (answers == null) {
-                        answers = Collections.emptyMap();
-                    }
+        Map<String, String> answers = attempt.getAnswers();
+        if (answers == null) {
+            answers = Collections.emptyMap();
+        }
+        final Map<String, String> finalAnswers = answers;
 
-                    List<QuizQuestion> quizQuestions = quiz.getQuestions();
-                    Map<String, String> correctMap = new HashMap<>();
-
-                    if (quizQuestions != null) {
-                        correctMap = quizQuestions.stream()
-                                .filter(q -> q != null && q.getFlashcardId() != null)
-                                .collect(Collectors.toMap(
-                                        QuizQuestion::getFlashcardId,
-                                        q -> q.getCorrectAnswer() != null ? q.getCorrectAnswer() : "",
-                                        (a, b) -> a
-                                ));
-                    }
-
-                    final Map<String, String> finalCorrectMap = correctMap;
-                    final Map<String, String> finalAnswers = answers;
-
-                    List<QuizQuestionResultDto> qResults = finalAnswers.entrySet().stream()
-                            .map(e -> {
-                                String fid = e.getKey();
-                                String userAns = e.getValue() != null ? e.getValue() : "";
-                                String correct = finalCorrectMap.get(fid);
-                                boolean correctFlag = correct != null && correct.equalsIgnoreCase(userAns);
-                                return new QuizQuestionResultDto(fid, correct, userAns, correctFlag);
-                            })
-                            .collect(Collectors.toList());
-
-                    return new QuizAttemptResultDto(
-                            attempt.getId(),
-                            attempt.getQuizId(),
-                            attempt.getDeckId(),
-                            attempt.getUserId(),
-                            attempt.getScore(),
-                            attempt.getCompletedAt(),
-                            qResults
+        List<QuizQuestionResultDto> qResults = snapshot.stream()
+                .filter(q -> q != null && q.getQuestionId() != null)
+                .map(q -> {
+                    String userAns = finalAnswers.getOrDefault(q.getQuestionId(), "");
+                    boolean correct = q.getCorrectAnswer() != null &&
+                            q.getCorrectAnswer().equalsIgnoreCase(userAns);
+                    return new QuizQuestionResultDto(
+                            q.getQuestionId(),
+                            q.getFlashcardId(),
+                            q.getQuestionText(),
+                            q.getCorrectAnswer(),
+                            userAns,
+                            correct
                     );
-                });
+                })
+                .collect(Collectors.toList());
+
+        return Mono.just(new QuizAttemptResultDto(
+                attempt.getId(),
+                attempt.getQuizId(),
+                attempt.getDeckId(),
+                attempt.getDeckName(),
+                attempt.getUserId(),
+                attempt.getScore(),
+                attempt.getCompletedAt(),
+                qResults
+        ));
     }
 
     private int calculateXpForQuiz(int score, int totalQuestions) {
