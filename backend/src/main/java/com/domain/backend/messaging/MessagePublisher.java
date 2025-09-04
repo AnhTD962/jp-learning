@@ -20,6 +20,4 @@ public class MessagePublisher {
         rabbitTemplate.convertAndSend(MessageQueueConfig.DIRECT_EXCHANGE, "quizResultRoutingKey", message);
         System.out.println("Published quiz completion message for user: " + message.getUserId());
     }
-
-    // Add other publish methods for background tasks if needed
 }

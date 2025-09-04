@@ -19,12 +19,23 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
+    @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<NotificationDto>> getNotificationsStream() {
         return ReactiveSecurityContextHolder.getContext()
                 .map(ctx -> ctx.getAuthentication().getPrincipal())
                 .cast(UserDetails.class)
-                .flatMapMany(userDetails -> notificationService.getNotificationsStream(userDetails.getUsername()));
+                .flatMapMany(userDetails -> notificationService.getNotificationsStream(userDetails.getUsername()))
+                .concatWith(Flux.never()); // giữ stream mở
+    }
+
+    @GetMapping
+    public Flux<NotificationDto> getAllNotifications() {
+        return ReactiveSecurityContextHolder.getContext()
+                .map(ctx -> ctx.getAuthentication().getPrincipal())
+                .cast(UserDetails.class)
+                .flatMapMany(userDetails ->
+                        notificationService.getAllNotifications(userDetails.getUsername()));
     }
 
     @PostMapping("/{id}/read")

@@ -58,6 +58,14 @@ public class NotificationService {
     }
 
     /**
+     * Lấy tất cả thông báo của user theo thứ tự mới nhất trước.
+     */
+    public Flux<NotificationDto> getAllNotifications(String userId) {
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
+                .map(this::convertToDto);
+    }
+
+    /**
      * Đánh dấu một thông báo là đã đọc.
      */
     public Mono<Void> markNotificationAsRead(String notificationId) {

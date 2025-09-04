@@ -13,7 +13,6 @@
         placeholder="Search..."
         class="border border-gray-300 rounded px-2 py-1 hidden sm:block"
       />
-      <NotificationDropdown v-if="isLoggedIn" />
       <div v-if="isLoggedIn" class="relative">
         <button @click="showDropdown = !showDropdown" class="ml-2 text-gray-700">
           {{ user?.username }} ⬇
@@ -38,7 +37,6 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAuthStore } from '../store/authStore'
-import NotificationDropdown from './NotificationDropdown.vue'
 
 const showDropdown = ref(false)
 const auth = useAuthStore()

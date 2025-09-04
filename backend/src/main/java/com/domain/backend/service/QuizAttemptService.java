@@ -13,6 +13,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Instant;
 import java.util.*;
@@ -28,7 +29,8 @@ public class QuizAttemptService {
     private final QuizAttemptRepository quizAttemptRepository;
     private final FlashcardDeckRepository flashcardDeckRepository;
     private final MessagePublisher messagePublisher;
-    private final GamificationService gamificationService;
+    private final NotificationService notificationService;
+    private final MailService mailService;
 
     /**
      * Start an attempt for a quiz (snapshot questions at start).
@@ -98,6 +100,75 @@ public class QuizAttemptService {
     /**
      * Submit an attempt.
      */
+//    public Mono<QuizAttemptResultDto> submitAttempt(String attemptId, QuizSubmissionRequest submission, String username) {
+//        log.info("➡️ [SUBMIT_ATTEMPT] attemptId={}, username={}", attemptId, username);
+//
+//        return quizAttemptRepository.findById(attemptId)
+//                .switchIfEmpty(Mono.error(new IllegalArgumentException("Attempt not found")))
+//                .flatMap(attempt -> {
+//                    if (!Objects.equals(attempt.getUserId(), username)) {
+//                        return Mono.error(new AccessDeniedException("Not allowed to submit this attempt"));
+//                    }
+//                    if (attempt.isCompleted()) {
+//                        return Mono.error(new IllegalStateException("Attempt already submitted"));
+//                    }
+//
+//                    Map<String, String> submissionAnswers = submission.getAnswers();
+//                    if (submissionAnswers == null) {
+//                        submissionAnswers = new HashMap<>();
+//                    }
+//                    final Map<String, String> finalAnswers = submissionAnswers;
+//
+//                    List<QuizQuestion> snapshot = attempt.getQuestionsSnapshot();
+//                    if (snapshot == null || snapshot.isEmpty()) {
+//                        return Mono.error(new IllegalStateException("Attempt has no snapshot questions"));
+//                    }
+//
+//                    AtomicInteger score = new AtomicInteger(0);
+//                    List<QuizQuestionResultDto> questionResults = new ArrayList<>();
+//
+//                    for (QuizQuestion q : snapshot) {
+//                        if (q == null || q.getQuestionId() == null) continue;
+//
+//                        // ✅ Lấy theo questionId thay vì flashcardId
+//                        String userAnswer = finalAnswers.getOrDefault(q.getQuestionId(), "");
+//                        if (userAnswer != null) userAnswer = userAnswer.trim();
+//
+//                        boolean correct = q.getCorrectAnswer() != null &&
+//                                q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
+//
+//                        if (correct) score.incrementAndGet();
+//
+//                        questionResults.add(new QuizQuestionResultDto(
+//                                q.getQuestionId(),
+//                                q.getFlashcardId(),
+//                                q.getQuestionText(),
+//                                q.getCorrectAnswer(),
+//                                userAnswer,
+//                                correct
+//                        ));
+//                    }
+//
+//                    attempt.setAnswers(new HashMap<>(finalAnswers));
+//                    attempt.setScore(score.get());
+//                    attempt.setCompletedAt(Instant.now());
+//                    attempt.setCompleted(true);
+//
+//                    return quizAttemptRepository.save(attempt)
+//                            .map(savedAttempt -> new QuizAttemptResultDto(
+//                                    savedAttempt.getId(),
+//                                    savedAttempt.getQuizId(),
+//                                    savedAttempt.getDeckId(),
+//                                    savedAttempt.getDeckName(),
+//                                    savedAttempt.getUserId(),
+//                                    savedAttempt.getScore(),
+//                                    savedAttempt.getCompletedAt(),
+//                                    new ArrayList<>(questionResults)
+//                            ));
+//
+//                });
+//    }
+
     public Mono<QuizAttemptResultDto> submitAttempt(String attemptId, QuizSubmissionRequest submission, String username) {
         log.info("➡️ [SUBMIT_ATTEMPT] attemptId={}, username={}", attemptId, username);
 
@@ -111,11 +182,8 @@ public class QuizAttemptService {
                         return Mono.error(new IllegalStateException("Attempt already submitted"));
                     }
 
-                    Map<String, String> submissionAnswers = submission.getAnswers();
-                    if (submissionAnswers == null) {
-                        submissionAnswers = new HashMap<>();
-                    }
-                    final Map<String, String> finalAnswers = submissionAnswers;
+                    Map<String, String> finalAnswers = Optional.ofNullable(submission.getAnswers())
+                            .orElse(new HashMap<>());
 
                     List<QuizQuestion> snapshot = attempt.getQuestionsSnapshot();
                     if (snapshot == null || snapshot.isEmpty()) {
@@ -128,10 +196,7 @@ public class QuizAttemptService {
                     for (QuizQuestion q : snapshot) {
                         if (q == null || q.getQuestionId() == null) continue;
 
-                        // ✅ Lấy theo questionId thay vì flashcardId
-                        String userAnswer = finalAnswers.getOrDefault(q.getQuestionId(), "");
-                        if (userAnswer != null) userAnswer = userAnswer.trim();
-
+                        String userAnswer = finalAnswers.getOrDefault(q.getQuestionId(), "").trim();
                         boolean correct = q.getCorrectAnswer() != null &&
                                 q.getCorrectAnswer().equalsIgnoreCase(userAnswer);
 
@@ -153,18 +218,37 @@ public class QuizAttemptService {
                     attempt.setCompleted(true);
 
                     return quizAttemptRepository.save(attempt)
-                            .map(savedAttempt -> new QuizAttemptResultDto(
-                                    savedAttempt.getId(),
-                                    savedAttempt.getQuizId(),
-                                    savedAttempt.getDeckId(),
-                                    savedAttempt.getDeckName(),
-                                    savedAttempt.getUserId(),
-                                    savedAttempt.getScore(),
-                                    savedAttempt.getCompletedAt(),
-                                    new ArrayList<>(questionResults)
-                            ));
+                            .flatMap(savedAttempt -> {
+                                QuizAttemptResultDto resultDto = new QuizAttemptResultDto(
+                                        savedAttempt.getId(),
+                                        savedAttempt.getQuizId(),
+                                        savedAttempt.getDeckId(),
+                                        savedAttempt.getDeckName(),
+                                        savedAttempt.getUserId(),
+                                        savedAttempt.getScore(),
+                                        savedAttempt.getCompletedAt(),
+                                        new ArrayList<>(questionResults)
+                                );
+
+                                // ✅ Gửi notification (non-blocking)
+                                Mono<Void> notificationMono = notificationService
+                                        .sendQuizCompletionNotification(savedAttempt.getUserId(), savedAttempt.getScore())
+                                        .then();
+
+                                // ✅ Gửi email (blocking → boundedElastic)
+                                Mono<Void> emailMono = Mono.fromRunnable(() -> {
+                                    log.info("📧 Simulating sending email to user={} for quiz={}",
+                                            savedAttempt.getUserId(), savedAttempt.getDeckName());
+                                }).subscribeOn(Schedulers.boundedElastic()).then();
+
+                                // ✅ Chạy notification + email song song, sau đó trả về result
+                                return Mono.when(notificationMono, emailMono)
+                                        .thenReturn(resultDto);
+                            });
                 });
     }
+
+
 
     /**
      * Get attempt result.

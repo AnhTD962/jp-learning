@@ -8,8 +8,6 @@ import FlashcardDecksPage from '../views/FlashcardDecksPage.vue'
 import FlashcardDetailPage from '../views/FlashcardDetailPage.vue'
 import QuizView from '../views/QuizView.vue'
 import QuizResult from '../views/QuizResult.vue'
-import LeaderboardPage from '../views/LeaderboardPage.vue'
-import AchievementsPage from '../views/AchievementsPage.vue'
 import NotFoundPage from '../views/NotFoundPage.vue'
 import Home from '../views/Home.vue'
 import Words from '../views/Words.vue'
@@ -19,6 +17,7 @@ import CreateWord from '../components/CreateWord.vue'
 import FlashcardDeckOfOwner from '../views/FlashcardDeckOfOwner.vue'
 import FlashcardView from '../views/FlashcardView.vue'
 import MyAttempts from '../views/MyAttempts.vue'
+import NotificationView from '../views/NotificationView.vue'
 
 const routes = [
     { path: '/login', component: LoginPage },
@@ -28,8 +27,6 @@ const routes = [
     { path: '/quiz/:quizId', component: QuizView, name: 'QuizView', beforeEnter: authGuard, props: true },
     { path: '/attempts/:attemptId/result', component: QuizResult, beforeEnter: authGuard },
     { path: '/attempts', component: MyAttempts, beforeEnter: authGuard },
-    { path: '/leaderboard', component: LeaderboardPage, beforeEnter: authGuard },
-    { path: '/achievements', component: AchievementsPage, beforeEnter: authGuard },
     { path: '/', component: Home },
     { path: '/words', component: Words },
     { path: '/word/:id', component: WordDetail },
@@ -38,6 +35,7 @@ const routes = [
     { path: '/flashcards/view/:id', component: FlashcardView, beforeEnter: authGuard },
     { path: '/users/:userId/decks', component: FlashcardDeckOfOwner, beforeEnter: authGuard },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
+    { path: '/notifications', name: 'Notification', component: NotificationView, beforeEnter: authGuard },
 ]
 
 const router = createRouter({

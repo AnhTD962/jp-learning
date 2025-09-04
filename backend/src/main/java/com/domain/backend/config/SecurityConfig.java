@@ -38,7 +38,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/auth/**").permitAll() // Allow public access to auth endpoints
                         .pathMatchers("/words/**").permitAll() // Allow public access to word lookup (adjust as needed)
-                        .pathMatchers("/notifications/stream").permitAll() // Allow SSE connection for notifications
+                        .pathMatchers("/notifications/**").permitAll() // Allow SSE connection for notifications
                         .pathMatchers("/quizzes/**").permitAll()
                         .pathMatchers("/attempts/**").permitAll()
                         .pathMatchers("/decks/**").permitAll() // Allow public access to flashcard decks

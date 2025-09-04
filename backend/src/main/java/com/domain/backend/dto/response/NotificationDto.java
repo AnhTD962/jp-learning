@@ -1,6 +1,7 @@
 package com.domain.backend.dto.response;
 
 import com.domain.backend.entity.NotificationType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,8 +19,7 @@ public class NotificationDto {
     private String message;
     private NotificationType type;
     private Instant createdAt;
-    private boolean read;
 
-    @Builder.Default
-    private boolean isRead = false;
+    @JsonProperty("read") // ép JSON field là "read" thay vì "isRead"
+    private boolean isRead;
 }
