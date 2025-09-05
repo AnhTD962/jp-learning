@@ -27,7 +27,6 @@ public class User implements UserDetails {
     private Set<Role> roles;
     private int xpPoints;
     private int studyStreak;
-    private List<String> achievementIds;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

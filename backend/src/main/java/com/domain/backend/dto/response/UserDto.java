@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
 import java.util.Set;
 
 @Data
@@ -13,8 +12,8 @@ import java.util.Set;
 public class UserDto {
     private String id;
     private String username;
+    private String email;
     private int xpPoints;
     private int studyStreak;
-    private List<String> achievementIds; // IDs of unlocked achievements
     private Set<String> roles; // Roles as strings
 }

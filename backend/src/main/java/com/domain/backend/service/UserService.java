@@ -15,8 +15,14 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public Mono<UserDto> getUserProfile(String userId) {
-        return userRepository.findById(userId)
+    public Mono<UserDto> getUserProfileByUsername(String username) {
+        return userRepository.findByUsername(username)   // cần có trong UserRepository
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .map(this::convertToDto);
+    }
+
+    public Mono<UserDto> getUserProfileById(String id) {
+        return userRepository.findById(id)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
                 .map(this::convertToDto);
     }
@@ -42,23 +48,16 @@ public class UserService {
     public Mono<User> addAchievement(String userId, String achievementId) {
         return userRepository.findById(userId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
-                .flatMap(user -> {
-                    if (user.getAchievementIds() == null) {
-                        user.setAchievementIds(java.util.Collections.singletonList(achievementId));
-                    } else if (!user.getAchievementIds().contains(achievementId)) {
-                        user.getAchievementIds().add(achievementId);
-                    }
-                    return userRepository.save(user);
-                });
+                .flatMap(userRepository::save);
     }
 
     private UserDto convertToDto(User user) {
         UserDto dto = new UserDto();
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
+        dto.setEmail(user.getEmail());
         dto.setXpPoints(user.getXpPoints());
         dto.setStudyStreak(user.getStudyStreak());
-        dto.setAchievementIds(user.getAchievementIds());
         dto.setRoles(user.getRoles().stream().map(Enum::name).collect(Collectors.toSet()));
         return dto;
     }

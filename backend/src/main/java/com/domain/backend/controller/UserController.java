@@ -3,8 +3,10 @@ package com.domain.backend.controller;
 import com.domain.backend.dto.response.UserDto;
 import com.domain.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,15 +24,15 @@ public class UserController {
     @GetMapping("/me")
     public Mono<UserDto> getCurrentUserProfile() {
         return ReactiveSecurityContextHolder.getContext()
-                .map(ctx -> ctx.getAuthentication()) // Lấy Authentication từ SecurityContext
+                .map(SecurityContext::getAuthentication)
                 .cast(Authentication.class)
-                .map(auth -> (UserDetails) auth.getPrincipal())
-                .flatMap(userDetails -> userService.getUserProfile(userDetails.getUsername()));
+                .map(Authentication::getName) // lấy username
+                .flatMap(userService::getUserProfileByUsername);
     }
 
     @GetMapping("/{id}")
-    // @PreAuthorize("hasRole('ADMIN')") // Uncomment and configure if using method security
+    @PreAuthorize("hasRole('ADMIN')") // Uncomment and configure if using method security
     public Mono<UserDto> getUserProfileById(@PathVariable String id) {
-        return userService.getUserProfile(id);
+        return userService.getUserProfileById(id);
     }
 }

@@ -52,7 +52,7 @@
 
         <!-- Take Quiz Section -->
         <div class="mt-8 text-center">
-            <button @click="showQuizForm = true"
+            <button @click="handleTakeQuiz"
                 class="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 transition">
                 🎯 Take Quiz
             </button>
@@ -99,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFlashcardStore } from '../store/flashcardStore.js'
 import { storeToRefs } from 'pinia'
@@ -119,6 +119,8 @@ const isFlipped = ref(false)
 
 const showQuizForm = ref(false)
 const numQuestions = ref(5)
+
+const openAuthModal = inject("openAuthModal")
 
 onMounted(() => {
     store.fetchDeck(route.params.id)
@@ -151,8 +153,19 @@ const goToOwner = (userId) => {
 }
 
 const createQuiz = async () => {
-  const quiz = await quizService.generateQuiz(currentDeck.value.id, numQuestions.value)
-  router.push({ name: 'QuizView', params: { quizId: quiz.id } })
+    const quiz = await quizService.generateQuiz(currentDeck.value.id, numQuestions.value)
+    router.push({ name: 'QuizView', params: { quizId: quiz.id } })
+}
+
+function handleTakeQuiz() {
+  if (!auth.isLoggedIn) {
+    // Nếu chưa login → mở modal login
+    openAuthModal("login")
+  } else {
+    // Nếu đã login → show quiz form
+    showQuizForm.value = true
+    // hoặc: showQuizForm.value = true (tùy bạn dùng modal quiz hay route riêng)
+  }
 }
 </script>
 

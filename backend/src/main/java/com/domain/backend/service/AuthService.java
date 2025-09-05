@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.security.SecureRandom;
 import java.util.Collections;
 
 @Service
@@ -23,6 +24,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final JwtConfig jwtConfig;
+    private final MailService mailService;
 
     public Mono<AuthResponse> register(RegisterRequest request) {
         return userRepository.findByUsername(request.getUsername())
@@ -38,7 +40,6 @@ public class AuthService {
                                     newUser.setRoles(Collections.singleton(Role.STUDENT));
                                     newUser.setXpPoints(0);
                                     newUser.setStudyStreak(0);
-                                    newUser.setAchievementIds(Collections.emptyList());
 
                                     return userRepository.save(newUser)
                                             .map(this::generateAuthResponse);
@@ -83,5 +84,49 @@ public class AuthService {
                 user.getEmail(),
                 user.getRoles()
         );
+    }
+
+    public Mono<Void> changePassword(String username, String currentPassword, String newPassword, String confirmPassword) {
+        return userRepository.findByUsername(username)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .flatMap(user -> {
+                    if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+                        return Mono.error(new IllegalArgumentException("Current password is incorrect"));
+                    } else if (newPassword.equals(currentPassword)) {
+                        return Mono.error(new IllegalArgumentException("New password must be different from the current password"));
+                    } else if (!newPassword.equals(confirmPassword)) {
+                        return Mono.error(new IllegalArgumentException("New password and confirm password must match"));
+                    }
+                    user.setPassword(passwordEncoder.encode(newPassword));
+                    return userRepository.save(user).then();
+                });
+    }
+
+    public Mono<String> forgotPassword(String email) {
+        return userRepository.findByEmail(email)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Email not found")))
+                .flatMap(user -> {
+                    String randomPass = generateRandomPassword();
+                    user.setPassword(passwordEncoder.encode(randomPass));
+
+                    return userRepository.save(user)
+                            .flatMap(saved ->
+                                    mailService.sendMail(
+                                            email,
+                                            "Password Reset",
+                                            "Your new password is: " + randomPass
+                                    ).thenReturn("New password sent to your email")
+                            );
+                });
+    }
+
+    private String generateRandomPassword() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%";
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
     }
 }
