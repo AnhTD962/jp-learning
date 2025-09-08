@@ -84,7 +84,7 @@ const routes = [
     component: ChangePassword,
     name: "ChangePassword",
     beforeEnter: authGuard,
-  },
+  }
 ];
 
 const router = createRouter({

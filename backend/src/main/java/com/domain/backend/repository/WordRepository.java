@@ -18,4 +18,9 @@ public interface WordRepository extends ReactiveMongoRepository<Word, String> {
     Flux<Word> findByTypeAndSubType(String type, String subType);
 
     Mono<Boolean> existsByJapanese(String japanese);
+
+    Flux<Word> findByJapaneseContainingIgnoreCaseOrVietnameseContainingIgnoreCase(
+            String japanese, String vietnamese
+    );
+
 }

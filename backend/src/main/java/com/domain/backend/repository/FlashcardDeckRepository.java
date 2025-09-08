@@ -8,4 +8,7 @@ public interface FlashcardDeckRepository extends ReactiveMongoRepository<Flashca
 
     Flux<FlashcardDeck> findByUserId(String userId);
 
+
+    Flux<FlashcardDeck> findByNameContainingIgnoreCase(String name);
+
 }
