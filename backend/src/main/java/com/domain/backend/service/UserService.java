@@ -1,12 +1,16 @@
 package com.domain.backend.service;
 
+import com.domain.backend.dto.request.UpdateProfileRequest;
 import com.domain.backend.dto.response.UserDto;
+import com.domain.backend.entity.Role;
 import com.domain.backend.entity.User;
 import com.domain.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +28,21 @@ public class UserService {
     public Mono<UserDto> getUserProfileById(String id) {
         return userRepository.findById(id)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .map(this::convertToDto);
+    }
+
+    public Mono<UserDto> updateUserProfile(String userId, UpdateProfileRequest request) {
+        return userRepository.findById(userId)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .flatMap(user -> {
+                    if (request.getUsername() != null && !request.getUsername().isBlank()) {
+                        user.setUsername(request.getUsername());
+                    }
+                    if (request.getEmail() != null && !request.getEmail().isBlank()) {
+                        user.setEmail(request.getEmail());
+                    }
+                    return userRepository.save(user);
+                })
                 .map(this::convertToDto);
     }
 
@@ -45,10 +64,42 @@ public class UserService {
                 });
     }
 
-    public Mono<User> addAchievement(String userId, String achievementId) {
-        return userRepository.findById(userId)
+    public Mono<User> addAchievement(String username, String achievementId) {
+        return userRepository.findByUsername(username)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
                 .flatMap(userRepository::save);
+    }
+
+    public Flux<UserDto> getAllUsers(int page, int size) {
+        return userRepository.findAll()
+                .skip((long) page * size)
+                .take(size)
+                .map(this::convertToDto);
+    }
+
+    public Mono<UserDto> updateUserRoles(String username, Set<Role> roles) {
+        return userRepository.findByUsername(username)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .flatMap(user -> {
+                    user.setRoles(roles);
+                    return userRepository.save(user);
+                })
+                .map(this::convertToDto);
+    }
+
+    public Mono<UserDto> toggleUserLock(String username, boolean locked) {
+        return userRepository.findByUsername(username)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
+                .flatMap(user -> {
+                    // bạn cần thêm field `boolean locked` trong entity User
+                    if (locked) {
+                        user.setAccountNonLocked(false);
+                    } else {
+                        user.setAccountNonLocked(true);
+                    }
+                    return userRepository.save(user);
+                })
+                .map(this::convertToDto);
     }
 
     private UserDto convertToDto(User user) {

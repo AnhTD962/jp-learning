@@ -1,7 +1,5 @@
 package com.domain.backend.service;
 
-import com.domain.backend.entity.Word;
-import com.domain.backend.entity.FlashcardDeck;
 import com.domain.backend.repository.WordRepository;
 import com.domain.backend.repository.FlashcardDeckRepository;
 import lombok.RequiredArgsConstructor;

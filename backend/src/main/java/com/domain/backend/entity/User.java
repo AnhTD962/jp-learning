@@ -27,6 +27,7 @@ public class User implements UserDetails {
     private Set<Role> roles;
     private int xpPoints;
     private int studyStreak;
+    private boolean accountNonLocked = true;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -42,7 +43,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return accountNonLocked;
     }
 
     @Override
