@@ -2,6 +2,7 @@ package com.domain.backend.security;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
@@ -28,14 +29,16 @@ public class JwtAuthenticationFilter implements WebFilter {
                 String username = jwtUtil.extractUsername(jwt);
                 return userDetailsService.findByUsername(username)
                         .flatMap(userDetails -> {
+                            if (!userDetails.isAccountNonLocked() || !userDetails.isEnabled()) {
+                                return Mono.error(new LockedException("Account is locked or disabled"));
+                            }
                             UsernamePasswordAuthenticationToken authentication =
                                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                             return chain.filter(exchange)
                                     .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication));
-                        })
-                        .switchIfEmpty(chain.filter(exchange)); // Continue filter chain if user not found (though token was valid)
+                        });
             }
         }
-        return chain.filter(exchange); // Continue filter chain if no token or invalid token
+        return chain.filter(exchange);
     }
 }

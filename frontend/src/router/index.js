@@ -21,6 +21,7 @@ import NotificationView from "../views/NotificationView.vue";
 import ForgotPassword from "../views/ForgotPassword.vue";
 import Profile from "../views/Profile.vue";
 import ChangePassword from "../views/ChangePassword.vue";
+import AdminUsers from "../views/AdminUsers.vue";
 
 const routes = [
   { path: "/login", component: LoginPage },
@@ -84,7 +85,13 @@ const routes = [
     component: ChangePassword,
     name: "ChangePassword",
     beforeEnter: authGuard,
-  }
+  },
+  {
+    path: "/admin",
+    name: "AdminUsers",
+    component: AdminUsers,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
 ];
 
 const router = createRouter({

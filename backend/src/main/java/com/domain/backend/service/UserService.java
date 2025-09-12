@@ -77,8 +77,24 @@ public class UserService {
                 .map(this::convertToDto);
     }
 
-    public Mono<UserDto> updateUserRoles(String username, Set<Role> roles) {
-        return userRepository.findByUsername(username)
+    public Flux<UserDto> searchUsers(String keyword, int page, int size) {
+        return userRepository.findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(keyword, keyword)
+                .skip((long) page * size)
+                .take(size)
+                .map(this::convertToDto);
+    }
+
+    public Mono<Long> countSearchUsers(String keyword) {
+        return userRepository.findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(keyword, keyword)
+                .count();
+    }
+
+    public Mono<Long> countAllUsers() {
+        return userRepository.count();
+    }
+
+    public Mono<UserDto> updateUserRoles(String userId, Set<Role> roles) {
+        return userRepository.findById(userId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
                 .flatMap(user -> {
                     user.setRoles(roles);
@@ -87,16 +103,12 @@ public class UserService {
                 .map(this::convertToDto);
     }
 
-    public Mono<UserDto> toggleUserLock(String username, boolean locked) {
-        return userRepository.findByUsername(username)
+    public Mono<UserDto> toggleUserLock(String userId, boolean locked) {
+        return userRepository.findById(userId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("User not found")))
                 .flatMap(user -> {
                     // bạn cần thêm field `boolean locked` trong entity User
-                    if (locked) {
-                        user.setAccountNonLocked(false);
-                    } else {
-                        user.setAccountNonLocked(true);
-                    }
+                    user.setAccountNonLocked(!locked);
                     return userRepository.save(user);
                 })
                 .map(this::convertToDto);
@@ -110,6 +122,7 @@ public class UserService {
         dto.setXpPoints(user.getXpPoints());
         dto.setStudyStreak(user.getStudyStreak());
         dto.setRoles(user.getRoles().stream().map(Enum::name).collect(Collectors.toSet()));
+        dto.setLocked(!user.isAccountNonLocked());
         return dto;
     }
 }

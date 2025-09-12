@@ -25,6 +25,11 @@
         </div>
       </router-link>
 
+      <router-link to="/admin" class="nav-link" exact-active-class="active" v-if="auth.isAdmin">
+        <UserIcon class="w-5 h-5 mr-1" />
+        <span class="ml-2">User Management</span>
+      </router-link>
+
       <router-link to="/flashcards" class="nav-link" exact-active-class="active" v-if="auth.isLoggedIn">
         <Squares2X2Icon class="w-5 h-5 mr-1" />
         <span class="ml-2">Flashcards</span>
@@ -44,7 +49,8 @@ import {
   Squares2X2Icon,
   LanguageIcon,
   FolderOpenIcon,
-  BellAlertIcon
+  BellAlertIcon,
+  UserIcon
 } from '@heroicons/vue/24/outline'
 
 import { useAuthStore } from '../store/authStore'

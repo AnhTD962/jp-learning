@@ -52,6 +52,13 @@ public class AuthService {
         return userRepository.findByUsername(request.getUsername())
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Invalid credentials")))
                 .flatMap(user -> {
+                    if (!user.isAccountNonLocked()) {
+                        return Mono.error(new IllegalArgumentException("Account is locked"));
+                    }
+                    if (!user.isEnabled()) { // nếu có field enabled
+                        return Mono.error(new IllegalArgumentException("Account is disabled"));
+                    }
+
                     if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
                         return Mono.just(generateAuthResponse(user));
                     } else {

@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
@@ -47,11 +50,30 @@ public class UserController {
         return userService.getUserProfileById(id);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
-    public Flux<UserDto> getAllUsers(@RequestParam(defaultValue = "0") int page,
-                                     @RequestParam(defaultValue = "10") int size) {
-        return userService.getAllUsers(page, size);
+    @PreAuthorize("hasRole('ADMIN')")
+    public Mono<Map<String, Object>> getAllUsers(@RequestParam(defaultValue = "0") int page,
+                                                 @RequestParam(defaultValue = "10") int size,
+                                                 @RequestParam(required = false) String search) {
+        Flux<UserDto> usersFlux;
+        Mono<Long> countMono;
+
+        if (search != null && !search.isBlank()) {
+            usersFlux = userService.searchUsers(search, page, size);
+            countMono = userService.countSearchUsers(search);
+        } else {
+            usersFlux = userService.getAllUsers(page, size);
+            countMono = userService.countAllUsers();
+        }
+
+        return usersFlux.collectList()
+                .zipWith(countMono)
+                .map(tuple -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("content", tuple.getT1());
+                    response.put("totalElements", tuple.getT2());
+                    return response;
+                });
     }
 
     @PreAuthorize("hasRole('ADMIN')")

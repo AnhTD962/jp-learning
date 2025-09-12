@@ -41,7 +41,7 @@ public class SecurityConfig {
                         .pathMatchers("/notifications/**").permitAll() // Allow SSE connection for notifications
                         .pathMatchers("/quizzes/**").permitAll()
                         .pathMatchers("/attempts/**").permitAll()
-                        .pathMatchers("/users/**").permitAll() // Allow public access to user registration and profile fetching
+                        .pathMatchers("/users/**").authenticated()  // Allow public access to user registration and profile fetching
                         .pathMatchers("/decks/**").permitAll() // Allow public access to flashcard decks
                         .pathMatchers("/search/**").permitAll()
                         .pathMatchers("/admin/**").hasRole("ADMIN") // Example: Admin-only routes

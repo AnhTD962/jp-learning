@@ -16,4 +16,5 @@ public class UserDto {
     private int xpPoints;
     private int studyStreak;
     private Set<String> roles; // Roles as strings
+    private boolean locked;
 }
